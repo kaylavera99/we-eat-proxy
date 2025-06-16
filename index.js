@@ -18,32 +18,50 @@ admin.initializeApp({
   databaseURL: process.env.FIREBASE_DATABASE_URL,
 });
 
-const GOOGLE_PLACES_KEY = process.env.GOOGLE_PLACES_API_KEY;
-const NEARBY_URL      = process.env.GOOGLE_PLACES_API_URL;
-const TEXTSEARCH_URL  = process.env.GOOGLE_PLACES_TEXT_SEARCH_API_URL;
-const PHOTO_URL       = process.env.GOOGLE_PLACES_PHOTO_API_URL;
+
 
 //proxy endpoints:
+const {
+  GOOGLE_PLACES_API_KEY: KEY,
+  GOOGLE_PLACES_API_URL: NEARBY_URL
+} = process.env;
+
+if (!KEY || !NEARBY_URL) {
+  console.error("⚠️  Missing GOOGLE_PLACES_API_KEY or GOOGLE_PLACES_API_URL in env");
+  process.exit(1);
+}
+
 app.get('/proxy', async (req, res) => {
   const { location, radius, keyword } = req.query;
-   const cacheKey = `nearby:${location}:${radius}:${keyword}`;
-  const cached = cache.get(cacheKey);
-  if (cached) {
-    return res.json(cached);
+  if (!location || !radius || !keyword) {
+    return res.status(400).send("Missing location, radius or keyword");
+  }
+
+  // build a cache key
+  const cacheKey = `nearby:${location}:${radius}:${keyword}`;
+  if (cache.has(cacheKey)) {
+    return res.json(cache.get(cacheKey));
   }
 
   try {
-    const response = await axios.get(NEARBY_URL, {
-      params: { location, radius, keyword, type: 'restaurant', key: GOOGLE_PLACES_KEY }
+    const { data } = await axios.get(NEARBY_URL, {
+      params: {
+        location,
+        radius,
+        keyword,
+        type: 'restaurant',
+        key: KEY
+      }
     });
+
     cache.set(cacheKey, data);
-    res.json(response.data);
+    res.json(data);
+
   } catch (e) {
-    res.status(500).send('Places error');
+    console.error("🛑 Proxy error:", e.response?.data || e.message);
+    res.status(500).send("Places error");
   }
 });
 
-
-
-const PORT = process.env.PORT || 8100;
-app.listen(PORT, () => console.log(`Proxy running on ${PORT}`));
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`📡 Proxy running on port ${PORT}`));
